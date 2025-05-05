@@ -2,7 +2,31 @@
 # Structure: Cell Types – Modulo 6
 # https://www.hexspin.com/proof-of-confinement/
 
-hr='------------------------------------------------------------------------------------'
+export hr='------------------------------------------------------------------------------------'
+
+set_config() {
+  echo -e "\n$hr\nCONFIG\n$hr"
+  cat /home/runner/work/_actions/eq19/eq19/v2/.github/templates/jekyll_config.yml > $RUNNER_TEMP/_config.yml
+  export PATH=/home/runner/work/_actions/eq19/eq19/v2/.github/entrypoint:$PATH && source artifact.sh
+
+  cat $RUNNER_TEMP/orgs.json > $1/user_data/ft_client/test_client/results/orgs.json
+  gh variable set JEKYLL_CONFIG --body "$(cat $RUNNER_TEMP/_config.yml)"
+
+  PARAMS_JSON=$(curl -s -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github.v3+json" \
+    "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/variables/PARAMS_JSON" | jq -r '.value')
+  echo "${PARAMS_JSON}" | jq '.' > $1/user_data/strategies/fibbo.json
+
+  if jq empty < $1/user_data/strategies/fibbo.json; then
+    echo -e "\n$hr\nPARAMETERS\n$hr"
+    cat $1/user_data/strategies/fibbo.json
+    gh variable set PARAMS_JSON --repo ${TARGET_REPOSITORY} --body "${PARAMS_JSON}"
+  else
+    echo "Invalid JSON"
+  fi
+    
+  echo -e "\n$hr\nENVIRONTMENT\n$hr"
+  printenv | sort
+}
 
 git config --global user.name "${GITHUB_ACTOR}"
 git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
@@ -53,31 +77,9 @@ fi
 
 if [[ "${JOBS_ID}" == "1" ]]; then
 
-  if diff -qr ${GITHUB_WORKSPACE}/.github /home/runner/work/_actions/eq19/eq19/v2/.github >/dev/null; then
-    echo -e "\n$hr\nCONFIG\n$hr"
-    cat /home/runner/work/_actions/eq19/eq19/v2/.github/templates/jekyll_config.yml > $RUNNER_TEMP/_config.yml
-    export PATH=/home/runner/work/_actions/eq19/eq19/v2/.github/entrypoint:$PATH && source artifact.sh
+  BASE_FOLDER="/home/runner/work/_actions/eq19/eq19/v2/.github"
+  if diff -qr ${GITHUB_WORKSPACE}/.github ${BASE_FOLDER} > /dev/null; then set_config $1; fi
 
-    cat $RUNNER_TEMP/orgs.json > $1/user_data/ft_client/test_client/results/orgs.json
-    gh variable set JEKYLL_CONFIG --body "$(cat $RUNNER_TEMP/_config.yml)"
-
-    PARAMS_JSON=$(curl -s -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github.v3+json" \
-      "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/variables/PARAMS_JSON" | jq -r '.value')
-    echo "${PARAMS_JSON}" | jq '.' > $1/user_data/strategies/fibbo.json
-
-    if jq empty < $1/user_data/strategies/fibbo.json; then
-      echo -e "\n$hr\nPARAMETERS\n$hr"
-      cat $1/user_data/strategies/fibbo.json
-      gh variable set PARAMS_JSON --repo ${TARGET_REPOSITORY} --body "${PARAMS_JSON}"
-    else
-      echo "Invalid JSON"
-    fi
-    
-    echo -e "\n$hr\nENVIRONTMENT\n$hr"
-    printenv | sort
-  fi
-
-  echo -e "\n$hr\nWORKSPACE\n$hr"
   cd ${GITHUB_WORKSPACE} && rm -rf .github
   cp -r /home/runner/work/_actions/eq19/eq19/v2/.github .
   chown -R "$(whoami)" .github
@@ -98,8 +100,11 @@ if [[ "${JOBS_ID}" == "1" ]]; then
 
   else
 
+    if [[ ! -f $RUNNER_TEMP/_config.yml ]]; then set_config $1; fi
     cd $1 && javac -d user_data/ft_client/test_client javaCode/Main.java
-    cd $GITHUB_WORKSPACE && rm -rf user_data && mv -f $1/user_data . && ls -al .
+
+    cd $GITHUB_WORKSPACE && rm -rf user_data && mv -f $1/user_data .
+    echo -e "\n$hr\nWORKSPACE\n$hr" && ls -al .
 
     # Fetch SHA, encode new content, and update in one step
     gh api --method PUT /repos/${TARGET_REPOSITORY}/contents/.github/workflows/main.yml \
